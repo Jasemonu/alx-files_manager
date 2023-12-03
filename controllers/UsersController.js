@@ -1,29 +1,45 @@
+// eslint-disable-next-line no-unused-vars
+const { ObjectId } = require('mongodb');
+const crypto = require('crypto');
 const dbClient = require('../utils/db');
 
-class UsersController {
-  static async postNew(req, res) {
+const UsersController = {
+  async postNew(req, res) {
+    console.log('Incoming request body:', req.body);
     const { email, password } = req.body;
+
     if (!email) {
-      res.status(400).json({ error: 'Missing email' });
-      res.end();
-      return;
+      return res.status(400).json({ error: 'Missing email' });
     }
+
     if (!password) {
-      res.status(400).json({ error: 'Missing password' });
-      res.end();
-      return;
+      return res.status(400).json({ error: 'Missing password' });
     }
-    const userExist = await dbClient.userExist(email);
-    if (userExist) {
-      res.status(400).json({ error: 'Already exist' });
-      res.end();
-      return;
+
+    const usersCollection = dbClient.db.collection('users');
+    const existingUser = await usersCollection.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Already exist' });
     }
-    const user = await dbClient.createUser(email, password);
-    const id = `${user.insertedId}`;
-    res.status(201).json({ id, email });
-    res.end();
-  }
-}
+
+    const hashedPassword = crypto.createHash('sha1').update(password).digest('hex');
+
+    const newUser = {
+      email,
+      password: hashedPassword,
+    };
+
+    try {
+      const result = await usersCollection.insertOne(newUser);
+      const { _id, email } = result.ops[0];
+
+      return res.status(201).json({ id: _id, email });
+    } catch (err) {
+      console.error('Error creating user:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+};
 
 module.exports = UsersController;
