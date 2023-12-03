@@ -1,6 +1,7 @@
 const express = require('express');
-const app = express();
 const routes = require('./routes');
+
+const app = express();
 
 // Set port from environment variable or default to 5000
 const PORT = process.env.PORT || 5000;
@@ -10,5 +11,5 @@ app.use('/', routes);
 
 // Start the Express server
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
