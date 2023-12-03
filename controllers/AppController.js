@@ -7,9 +7,9 @@ const AppController = {
     const dbAlive = dbClient.isAlive();
 
     if (redisAlive && dbAlive) {
-      return res.status(200).json({ redis: true, db: true });
+      return res.status(200).json({ "redis": true, "db": true });
     }
-    return res.status(500).json({ redis: redisAlive, db: dbAlive });
+    return res.status(500).json({ "redis": redisAlive, "db": dbAlive });
   },
 
   async getStats(req, res) {
