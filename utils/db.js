@@ -48,6 +48,18 @@ class DBClient {
       return -1;
     }
   }
+
+  async addUser(email, password) {
+    const col = this.client.db().collection('users');
+    const user = col.insertOne({ email, password });
+    return user;
+  }
+
+  async checkEmail(email) {
+    const col = this.client.db().collection('users');
+    const user = col.findOne({ email });
+    return user;
+  }
 }
 
 const dbClient = new DBClient();
