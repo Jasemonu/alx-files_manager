@@ -60,6 +60,17 @@ class DBClient {
     const user = col.findOne({ email });
     return user;
   }
+
+  async findUserById(userId) {
+    try {
+      const user = await this.client.db(this.database).collection('users')
+        .findOne({ _id: userId });
+      return user;
+    } catch (err) {
+      console.error('Error finding user by ID:', err);
+      return null;
+    }
+  }
 }
 
 const dbClient = new DBClient();
