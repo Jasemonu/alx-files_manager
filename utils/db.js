@@ -1,11 +1,12 @@
 const { MongoClient } = require('mongodb');
+const mongo = require('mongodb');
 
 class DBClient {
   constructor() {
     const host = process.env.DB_HOST || 'localhost';
     const port = process.env.DB_PORT || 27017;
-    this.database = process.env.DB_DATABASE || 'files_manager';
-    const dbUrl = `mongodb://${host}:${port}`;
+    const database = process.env.DB_DATABASE || 'files_manager';
+    const dbUrl = `mongodb://${host}:${port}/${database}`;
 
     this.client = new MongoClient(dbUrl, { useUnifiedTopology: true });
     this.connected = false;
@@ -61,15 +62,15 @@ class DBClient {
     return user;
   }
 
-  async findUserById(userId) {
-    try {
-      const user = await this.client.db(this.database).collection('users')
-        .findOne({ _id: userId });
-      return user;
-    } catch (err) {
-      console.error('Error finding user by ID:', err);
+  async findUserById(id) {
+    const _id = new mongo.ObjectID(id);
+    await this.client.connect();
+    const user = await this.client.db(this.database).collection('users')
+      .find({ _id }).toArray();
+    if (!user.length) {
       return null;
     }
+    return user[0];
   }
 }
 
