@@ -1,3 +1,5 @@
+/* eslint-disable import/no-named-as-default */
+/* eslint-disable no-unused-vars */
 import { tmpdir } from 'os';
 import { promisify } from 'util';
 import Queue from 'bull/lib/queue';
@@ -10,7 +12,7 @@ import { Request, Response } from 'express';
 import { contentType } from 'mime-types';
 import mongoDBCore from 'mongodb/lib/core';
 import dbClient from '../utils/db';
-import { getUserFromXToken } from '../utils/auth';
+import redisClient from '../utils/redis';
 
 const VALID_FILE_TYPES = {
   folder: 'folder',
@@ -50,11 +52,20 @@ const isValidId = (id) => {
 };
 
 export default class FilesController {
-  /**
-   * Uploads a file.
-   * @param {Request} req The Express request object.
-   * @param {Response} res The Express response object.
-   */
+  static async getUserFromXToken(req) {
+    const token = req.headers['x-token'];
+
+    if (!token) {
+      return null;
+    }
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return null;
+    }
+    const user = await dbClient.findUser(userId);
+    return user._id.toString() || null;
+  }
+
   static async postUpload(req, res) {
     const { user } = req;
     const name = req.body ? req.body.name : null;
@@ -90,7 +101,11 @@ export default class FilesController {
         return;
       }
     }
-    const userId = user._id.toString();
+    const userId = await FilesController.getUserFromXToken(req);
+    if (userId === null) {
+      res.status(401).json({ error: 'Unauthorized' }).end();
+      return;
+    }
     const baseDir = `${process.env.FOLDER_PATH || ''}`.trim().length > 0
       ? process.env.FOLDER_PATH.trim()
       : joinPath(tmpdir(), DEFAULT_ROOT_FOLDER);
@@ -134,7 +149,10 @@ export default class FilesController {
   static async getShow(req, res) {
     const { user } = req;
     const id = req.params ? req.params.id : NULL_ID;
-    const userId = user._id.toString();
+    const userId = await FilesController.getUserFromXToken(req);
+    if (userId === null) {
+      return res.status(401).json({ error: 'Unauthorized' }).end();
+    }
     const file = await (await dbClient.filesCollection())
       .findOne({
         _id: new mongoDBCore.BSON.ObjectId(isValidId(id) ? id : NULL_ID),
@@ -142,10 +160,9 @@ export default class FilesController {
       });
 
     if (!file) {
-      res.status(404).json({ error: 'Not found' });
-      return;
+      return res.status(404).json({ error: 'Not found' });
     }
-    res.status(200).json({
+    return res.status(200).json({
       id,
       userId,
       name: file.name,
@@ -157,51 +174,53 @@ export default class FilesController {
     });
   }
 
-  /**
-   * Retrieves files associated with a specific user.
-   * @param {Request} req The Express request object.
-   * @param {Response} res The Express response object.
-   */
   static async getIndex(req, res) {
     const { user } = req;
     const parentId = req.query.parentId || ROOT_FOLDER_ID.toString();
     const page = /\d+/.test((req.query.page || '').toString())
       ? Number.parseInt(req.query.page, 10)
       : 0;
+    const userId = await FilesController.getUserFromXToken(req);
+    if (userId === null) {
+      return res.status(401).json({ error: 'Unauthorized' }).end();
+    }
     const filesFilter = {
-      userId: user._id,
+      userId: new mongoDBCore.BSON.ObjectId(userId),
       parentId: parentId === ROOT_FOLDER_ID.toString()
         ? parentId
         : new mongoDBCore.BSON.ObjectId(isValidId(parentId) ? parentId : NULL_ID),
     };
 
-    const files = await (await (await dbClient.filesCollection())
-      .aggregate([
-        { $match: filesFilter },
-        { $sort: { _id: -1 } },
-        { $skip: page * MAX_FILES_PER_PAGE },
-        { $limit: MAX_FILES_PER_PAGE },
-        {
-          $project: {
-            _id: 0,
-            id: '$_id',
-            userId: '$userId',
-            name: '$name',
-            type: '$type',
-            isPublic: '$isPublic',
-            parentId: {
-              $cond: { if: { $eq: ['$parentId', '0'] }, then: 0, else: '$parentId' },
-            },
+    const col = await dbClient.filesCollection();
+    const files = await col.aggregate([
+      { $match: filesFilter },
+      { $sort: { _id: -1 } },
+      { $skip: page * MAX_FILES_PER_PAGE },
+      { $limit: MAX_FILES_PER_PAGE },
+      {
+        $project: {
+          _id: 0,
+          id: '$_id',
+          userId: '$userId',
+          name: '$name',
+          type: '$type',
+          isPublic: '$isPublic',
+          parentId: {
+            $cond: { if: { $eq: ['$parentId', '0'] }, then: 0, else: '$parentId' },
           },
         },
-      ])).toArray();
-    res.status(200).json(files);
+      },
+    ]).toArray();
+    return res.status(200).json(files);
   }
 
   static async putPublish(req, res) {
     const { user } = req;
     const { id } = req.params;
-    const userId = user._id.toString();
+    const userId = await FilesController.getUserFromXToken(req);
+    if (userId === null) {
+      return res.status(401).json({ error: 'Unauthorized' }).end();
+    }
     const fileFilter = {
       _id: new mongoDBCore.BSON.ObjectId(isValidId(id) ? id : NULL_ID),
       userId: new mongoDBCore.BSON.ObjectId(isValidId(userId) ? userId : NULL_ID),
@@ -210,12 +229,11 @@ export default class FilesController {
       .findOne(fileFilter);
 
     if (!file) {
-      res.status(404).json({ error: 'Not found' });
-      return;
+      return res.status(404).json({ error: 'Not found' });
     }
     await (await dbClient.filesCollection())
       .updateOne(fileFilter, { $set: { isPublic: true } });
-    res.status(200).json({
+    return res.status(200).json({
       id,
       userId,
       name: file.name,
@@ -230,7 +248,10 @@ export default class FilesController {
   static async putUnpublish(req, res) {
     const { user } = req;
     const { id } = req.params;
-    const userId = user._id.toString();
+    const userId = await FilesController.getUserFromXToken(req);
+    if (userId === null) {
+      return res.status(401).json({ error: 'Unauthorized' }).end();
+    }
     const fileFilter = {
       _id: new mongoDBCore.BSON.ObjectId(isValidId(id) ? id : NULL_ID),
       userId: new mongoDBCore.BSON.ObjectId(isValidId(userId) ? userId : NULL_ID),
@@ -239,12 +260,11 @@ export default class FilesController {
       .findOne(fileFilter);
 
     if (!file) {
-      res.status(404).json({ error: 'Not found' });
-      return;
+      return res.status(404).json({ error: 'Not found' });
     }
     await (await dbClient.filesCollection())
       .updateOne(fileFilter, { $set: { isPublic: false } });
-    res.status(200).json({
+    return res.status(200).json({
       id,
       userId,
       name: file.name,
@@ -256,16 +276,11 @@ export default class FilesController {
     });
   }
 
-  /**
-   * Retrieves the content of a file.
-   * @param {Request} req The Express request object.
-   * @param {Response} res The Express response object.
-   */
   static async getFile(req, res) {
-    const user = await getUserFromXToken(req);
+    const userId = await FilesController.getUserFromXToken(req);
     const { id } = req.params;
     const size = req.query.size || null;
-    const userId = user ? user._id.toString() : '';
+    // const userId = user ? user._id.toString() : '';
     const fileFilter = {
       _id: new mongoDBCore.BSON.ObjectId(isValidId(id) ? id : NULL_ID),
     };
