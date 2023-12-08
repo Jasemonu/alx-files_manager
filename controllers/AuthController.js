@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const redisClient = require('../utils/redis');
 const dbClient = require('../utils/db');
 
-const AuthController = {
+const class AuthController = {
   async getConnect(req, res) {
     const authHeader = req.headers.authorization;
 
