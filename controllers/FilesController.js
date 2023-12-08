@@ -1,6 +1,4 @@
-/* eslint-disable import/no-named-as-default */
-/* eslint-disable no-unused-vars */
-import { tmpdir } from 'os';
+mport { tmpdir } from 'os';
 import { promisify } from 'util';
 import Queue from 'bull/lib/queue';
 import { v4 as uuidv4 } from 'uuid';
