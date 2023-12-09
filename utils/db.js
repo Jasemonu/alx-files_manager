@@ -1,53 +1,25 @@
-const { MongoClient } = require('mongodb');
-const mongo = require('mongodb');
+import { MongoClient, ObjectId } from 'mongodb';
 
 class DBClient {
   constructor() {
     const host = process.env.DB_HOST || 'localhost';
-    const port = process.env.DB_PORT || 27017;
+    const port = process.env.DB_PORT || '27017';
     const database = process.env.DB_DATABASE || 'files_manager';
-    const dbUrl = `mongodb://${host}:${port}/${database}`;
-
-    this.client = new MongoClient(dbUrl, { useUnifiedTopology: true });
-    this.connected = false;
-
-    this.connect();
-  }
-
-  async connect() {
-    try {
-      await this.client.connect();
-      this.connected = true;
-    } catch (err) {
-      console.error('Error connecting to MongoDB:', err);
-      this.connected = false;
-    }
+    const uri = `mongodb://${host}:${port}/${database}`;
+    this.client = new MongoClient(uri, { useUnifiedTopology: true });
+    this.client.connect();
   }
 
   isAlive() {
-    return this.connected;
+    return this.client.isConnected();
   }
 
   async nbUsers() {
-    try {
-      const usersCollection = this.client.db(this.database).collection('users');
-      const usersCount = await usersCollection.countDocuments();
-      return usersCount;
-    } catch (err) {
-      console.error('Error counting users:', err);
-      return -1;
-    }
+    return this.client.db().collection('users').countDocuments();
   }
 
   async nbFiles() {
-    try {
-      const filesCollection = this.client.db(this.database).collection('files');
-      const filesCount = await filesCollection.countDocuments();
-      return filesCount;
-    } catch (err) {
-      console.error('Error counting files:', err);
-      return -1;
-    }
+    return this.client.db().collection('files').countDocuments();
   }
 
   async addUser(email, password) {
@@ -62,17 +34,33 @@ class DBClient {
     return user;
   }
 
-  async findUserById(id) {
-    const _id = new mongo.ObjectID(id);
-    await this.client.connect();
-    const user = await this.client.db(this.database).collection('users')
-      .find({ _id }).toArray();
-    if (!user.length) {
-      return null;
-    }
-    return user[0];
+  async findUser(id) {
+    const col = this.client.db().collection('users');
+    return col.findOne({ _id: ObjectId(id) });
+  }
+
+  async newFile(userId, name, type, isPublic, parentId, data) {
+    const col = this.client.db().collection('files');
+    const file = col.insertOne({
+      userId, name, type, isPublic, parentId, data,
+    });
+    return file;
+  }
+
+  async filterFiles(filters) {
+    const col = this.client.db().collection('files');
+    const idFilters = ['_id', 'userId', 'parentId'].filter((prop) => prop in filters && filters[prop] !== '0');
+    idFilters.forEach((i) => {
+      // eslint-disable-next-line no-param-reassign
+      filters[i] = ObjectId(filters[i]);
+    });
+    return col.findOne(filters);
+  }
+
+  async filesCollection() {
+    return this.client.db().collection('files');
   }
 }
 
-const dbClient = new DBClient();
-module.exports = dbClient;
+export const dbClient = new DBClient();
+export default dbClient;
