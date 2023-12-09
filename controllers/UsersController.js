@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const dbClient = require('../utils/db');
 const redisClient = require('../utils/redis');
 
-const class UsersController = {
+const UsersController = {
   async postNew(req, res) {
     const { email, password } = req.body;
 
